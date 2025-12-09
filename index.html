@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>素数判定ゲーム ～1秒フラッシュ判定～</title>
+<script src="https://formsubmit.co/formsubmit.js"></script>
+<style>
+  body { font-family: sans-serif; text-align: center; padding: 50px; background: #111; color: #fff; }
+  h1 { color: #0f0; }
+  #number { font-size: 5em; font-weight: bold; margin: 60px; color: #0ff; height: 120px; }
+  .buttons { margin: 40px; }
+  button { font-size: 1.8em; padding: 20px 50px; margin: 15px; border-radius: 15px; border: none; color: white; cursor: pointer; }
+  #prime { background: #27ae60; }
+  #notprime { background: #c0392b; }
+  #timer { font-size: 2em; color: #ff0; }
+  #result { font-size: 1.8em; margin: 20px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <h1>素数フラッシュ判定ゲーム</h1>
+  <p>1秒だけ数字が表示されます。素数だと思うなら即クリック！</p>
+  <div id="timer">残り <span id="countdown">1.0</span>秒</div>
+  <div id="number">準備中...</div>
+  
+  <div class="buttons">
+    <button id="prime">素数！</button>
+    <button id="notprime">素数じゃない！</button>
+  </div>
+  
+  <div id="result"></div>
+  <div id="final" class="hidden"></div>
+
+<script>
+const TOTAL_QUESTIONS = 10;
+let results = [];
+let currentQuestion = 0;
+let timerInterval = null;
+
+function randomOddNumber() {
+  const min = 1000, max = 999999;
+  let num;
+  do {
+    num = Math.floor(Math.random() * (max - min + 1)) + min;
+  } while (num % 2 === 0 || num % 5 === 0);
+  return num % 2 === 1 ? num : num + 1;
+}
+
+function isPrime(n) {
+  if (n <= 1) return false;
+  if (n <= 3) return true;
+  if (n % 2 === 0 || n % 3 === 0) return false;
+  for (let i = 5; i * i <= n; i += 6) {
+    if (n % i === 0 || n % (i + 2) === 0) return false;
+  }
+  return true;
+}
+
+function startQuestion() {
+  if (currentQuestion >= TOTAL_QUESTIONS) {
+    endGame();
+    return;
+  }
+  currentQuestion++;
+  
+  const num = randomOddNumber();
+  const actualPrime = isPrime(num);
+  
+  document.getElementById("number").textContent = num;
+  document.getElementById("result").textContent = `第 ${currentQuestion} 問 / 全 ${TOTAL_QUESTIONS} 問`;
+  
+  let timeLeft = 1.0;
+  document.getElementById("countdown").textContent = "1.0";
+  document.getElementById("timer").classList.remove("hidden");
+  
+  timerInterval = setInterval(() => {
+    timeLeft -= 0.1;
+    document.getElementById("countdown").textContent = timeLeft.toFixed(1);
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      document.getElementById("timer").classList.add("hidden");
+      document.getElementById("number").textContent = "時間切れ！";
+      
+      // 無回答として記録（正答数には含めない）
+      results.push({
+        question: currentQuestion,
+        number: num,
+        isPrime: actualPrime,
+        userAnswer: null,
+        correct: null
+      });
+      
+      setTimeout(startQuestion, 800); // 0.8秒待って次へ
+    }
+  }, 100);
+
+  // 回答ボタン
+  const answer = (userThinksPrime) => {
+    if (timerInterval === null) return; // 既に終了してたら無視
+    clearInterval(timerInterval);
+    timerInterval = null;
+    document.getElementById("timer").classList.add("hidden");
+    
+    const correct = (userThinksPrime === actualPrime);
+    results.push({
+      question: currentQuestion,
+      number: num,
+      isPrime: actualPrime,
+      userAnswer: userThinksPrime,
+      correct: correct
+    });
+    
+    document.getElementById("number").textContent = correct ? "正解！" : "不正解…";
+    setTimeout(startQuestion, 800);
+  };
+
+  document.getElementById("prime").onclick = () => answer(true);
+  document.getElementById("notprime").onclick = () => answer(false);
+}
+
+// ゲーム終了＆自動メール送信（完全そのまま）
+function endGame() {
+  document.querySelector(".buttons").classList.add("hidden");
+  document.getElementById("timer").classList.add("hidden");
+  document.getElementById("final").classList.remove("hidden");
+
+  let table = "問題,数字,正解,あなたの回答,正誤\n";
+  let answered = 0, correct = 0;
+  results.forEach(r => {
+    const actual = r.isPrime ? "素数" : "合成数";
+    const ans = r.userAnswer === null ? "無回答" : (r.userAnswer ? "素数" : "合成数");
+    const mark = r.correct === null ? "-" : (r.correct ? "○" : "×");
+    table += `${r.question},${r.number},${actual},${ans},${mark}\n`;
+    if (r.userAnswer !== null) answered++;
+    if (r.correct === true) correct++;
+  });
+  table += `\n回答した問題,${answered}/10\n正答数,${correct}/${answered}\n`;
+  table += `終了時刻,${new Date().toLocaleString('ja-JP')}\n`;
+  table += `ブラウザ,${navigator.userAgent}\n`;
+
+  const formData = new FormData();
+  formData.append("1秒素数判定結果", table);
+  formData.append("_subject", "1秒素数ゲーム結果 " + new Date().toISOString().slice(0,19).replace("T"," "));
+  formData.append("_captcha", "false");
+
+  fetch("https://formsubmit.co/sakirubymiku@gmail.com", {
+    method: "POST",
+    body: formData
+  });
+
+  document.getElementById("final").innerHTML = `
+    <h2>10問終了！</h2>
+    <p style="font-size:2em;">回答数: ${answered}/10<br>正答数: <b>${correct}/${answered}</b></p>
+    <p style="color:#0f0;font-size:2em;">結果は自動送信されました！</p>
+  `;
+}
+
+window.onload = () => {
+  setTimeout(startQuestion, 1500);
+};
+</script>
+</body>
+</html>
